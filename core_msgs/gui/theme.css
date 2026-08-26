@@ -1,0 +1,154 @@
+/* ==========================================================================
+ * theme.css -- shared visual language for the HDT consoles
+ *
+ * One file for the whole project. The instance viewer (twin_gui.py) and the
+ * aggregate console below both read from it, so changing a token here
+ * re-skins every console in the system.
+ * ==========================================================================*/
+
+:root{
+  /* surfaces */
+  --ink:#0b1216; --panel:#111c22; --panel-2:#0e171c; --panel-3:#16232a;
+  --rule:#1f3038; --rule-soft:#18262d;
+
+  /* type */
+  --text:#c9d9de; --muted:#6d848e; --dim:#4a5f69;
+
+  /* semantics */
+  --signal:#7fd1de;   /* the twin / live data          */
+  --goal:#d97ba6;     /* goals, missions               */
+  --warn:#e0a040;     /* obstacles, degraded links     */
+  --ok:#7bc49a;       /* healthy                       */
+  --bad:#e0685f;      /* lost / failed                 */
+  --uav:#9db8e0;      /* air agents                    */
+
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+
+  --step:4px;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--ink);color:var(--text);font-family:var(--sans);
+     font-size:13px;display:flex;flex-direction:column;overflow:hidden}
+
+/* --- header -------------------------------------------------------------*/
+header{display:flex;align-items:center;gap:22px;padding:12px 18px;
+       border-bottom:1px solid var(--rule);background:var(--panel-2);flex-wrap:wrap}
+h1{margin:0;font-size:15px;font-weight:600;letter-spacing:.04em}
+h1 span{color:var(--muted);font-weight:400}
+.meter{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.meter i{font-style:normal;color:var(--text)}
+.rail{display:flex;gap:3px;margin-left:auto}
+.rail b{font-family:var(--mono);font-size:10px;letter-spacing:.14em;font-weight:500;
+        padding:4px 10px;border:1px solid var(--rule);color:var(--muted);background:transparent}
+.rail b.on{color:var(--ink);background:var(--signal);border-color:var(--signal)}
+.rail b.on.warn{background:var(--warn);border-color:var(--warn)}
+.rail b.on.bad{background:var(--bad);border-color:var(--bad)}
+
+.banner{padding:6px 18px;background:#3a1f1f;color:#f0b3ad;font-family:var(--mono);
+        font-size:11px;display:none}
+.banner.show{display:block}
+.banner.ok{background:#1b2f26;color:#a8dcc0}
+
+/* --- page frame ---------------------------------------------------------*/
+main{flex:1;min-height:0;display:none}
+main.active{display:grid}
+.field{position:relative;min-height:0;background:
+       radial-gradient(120% 90% at 50% 0%,#132229 0%,var(--ink) 70%)}
+canvas{position:absolute;inset:0;width:100%;height:100%}
+.readout{position:absolute;left:14px;bottom:12px;font-family:var(--mono);font-size:11px;
+         color:var(--muted);line-height:1.7;pointer-events:none;white-space:pre}
+.readout em{font-style:normal;color:var(--signal)}
+.legend{position:absolute;right:14px;top:12px;display:flex;gap:14px;
+        font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--muted)}
+.legend s{text-decoration:none;display:inline-block;width:8px;height:8px;margin-right:5px;
+          vertical-align:middle;border-radius:50%}
+
+aside{border-left:1px solid var(--rule);background:var(--panel);overflow-y:auto;min-height:0}
+section{border-bottom:1px solid var(--rule);padding:14px 16px}
+.eyebrow{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;
+  font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.eyebrow u{text-decoration:none;color:var(--dim);letter-spacing:.08em}
+
+dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:5px 12px;
+   font-family:var(--mono);font-size:11.5px}
+dt{color:var(--muted)} dd{margin:0;text-align:right;overflow-wrap:anywhere}
+.empty{color:var(--muted);font-family:var(--mono);font-size:11px;margin:0}
+
+.ok{color:var(--ok)} .warn{color:var(--warn)} .error{color:var(--bad)} .info{color:var(--signal)}
+.muted{color:var(--muted)}
+
+/* --- rows / lists -------------------------------------------------------*/
+.row{border:1px solid var(--rule);border-left-width:2px;background:var(--panel-2);
+     padding:8px 10px;margin-bottom:6px;font-family:var(--mono);font-size:11.5px;cursor:default}
+.row:last-child{margin-bottom:0}
+.row.sel{border-color:var(--signal);background:var(--panel-3)}
+.row .hd{display:flex;justify-content:space-between;gap:8px;color:var(--text)}
+.row .sub{color:var(--muted);margin-top:3px;font-size:11px;display:flex;
+          justify-content:space-between;gap:8px}
+.row[data-state="live"]{border-left-color:var(--ok)}
+.row[data-state="stale"]{border-left-color:var(--warn)}
+.row[data-state="lost"]{border-left-color:var(--bad)}
+.row[data-state="idle"]{border-left-color:var(--rule)}
+
+.tag{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+     border:1px solid var(--rule);padding:1px 5px}
+.tag.ok{border-color:var(--ok)} .tag.warn{border-color:var(--warn)}
+.tag.error{border-color:var(--bad)} .tag.info{border-color:var(--signal)}
+
+/* --- table --------------------------------------------------------------*/
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11.5px}
+th{text-align:left;font-weight:500;color:var(--muted);font-size:10px;letter-spacing:.14em;
+   text-transform:uppercase;padding:0 10px 8px;border-bottom:1px solid var(--rule)}
+td{padding:7px 10px;border-bottom:1px solid var(--rule-soft);white-space:nowrap}
+tbody tr:hover{background:var(--panel-3)}
+td.num{text-align:right}
+
+/* --- log ----------------------------------------------------------------*/
+.log{font-family:var(--mono);font-size:11px;line-height:1.65}
+.log div{display:grid;grid-template-columns:52px 14px 1fr;gap:8px;padding:2px 0;
+         border-bottom:1px solid var(--rule-soft)}
+.log time{color:var(--dim);font-style:normal}
+.log b{font-weight:500;color:var(--muted)}
+
+/* --- controls -----------------------------------------------------------*/
+label{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.12em;
+      text-transform:uppercase;color:var(--muted);margin:0 0 4px}
+input,select{width:100%;background:var(--panel-2);border:1px solid var(--rule);color:var(--text);
+  font-family:var(--mono);font-size:11.5px;padding:6px 8px;border-radius:0;appearance:none}
+input:focus,select:focus{outline:none;border-color:var(--signal)}
+input:focus-visible,select:focus-visible,button:focus-visible,.tab:focus-visible{
+  outline:2px solid var(--signal);outline-offset:1px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fld{margin-bottom:10px}
+
+button{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  padding:8px 12px;border:1px solid var(--rule);background:var(--panel-2);color:var(--text);
+  cursor:pointer;transition:background .12s,border-color .12s}
+button:hover{border-color:var(--signal);color:var(--signal)}
+button.primary{background:var(--signal);border-color:var(--signal);color:var(--ink);font-weight:600}
+button.primary:hover{background:#9ee0ea;color:var(--ink)}
+button.ghost{padding:3px 7px;font-size:9.5px;letter-spacing:.1em}
+button[disabled]{opacity:.45;cursor:not-allowed}
+
+/* --- sheet tabs (bottom rail) -------------------------------------------*/
+.sheets{display:flex;align-items:stretch;gap:2px;padding:0 12px;background:var(--panel-2);
+        border-top:1px solid var(--rule);min-height:30px}
+.tab{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--muted);background:transparent;border:1px solid transparent;border-bottom:none;
+  padding:7px 16px 6px;cursor:pointer;transition:color .12s}
+.tab:hover{color:var(--text)}
+.tab[aria-selected="true"]{color:var(--signal);background:var(--ink);
+  border-color:var(--rule);position:relative;top:-1px}
+.sheets .spacer{flex:1}
+.sheets .stat{align-self:center;font-family:var(--mono);font-size:10px;color:var(--dim);
+              letter-spacing:.1em;padding-left:14px}
+
+@media (max-width:900px){
+  main.active{grid-template-columns:1fr !important;grid-template-rows:300px minmax(0,1fr)}
+  aside{border-left:0;border-top:1px solid var(--rule)}
+  body{overflow:auto}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none !important;animation:none !important}}
