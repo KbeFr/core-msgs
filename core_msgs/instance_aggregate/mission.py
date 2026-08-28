@@ -61,7 +61,7 @@ class MissionStatus(Enum):
     COMPLETE = auto()
     FAILED = auto()
     CANCELLED = auto()
-
+    BIDDING = auto()
     @classmethod
     def get_names(cls):
         return [member.name for member in cls]
@@ -107,11 +107,15 @@ class Mission:
 
     # Constraints
     battery_budget: float | None = None  # % of battery allowed for this task
+    battery_threshold: float | None = None
+
+    distance : float | None = None
+
 
     # Runtime state
     assigned_ugv: str | None = None
     mission_status : MissionStatus = MissionStatus.PENDING
-    last_cost: float = float("inf")
+    last_cost: float | None = None
 
     def next_goal(self, ugv_pos: tuple[float, float] | None = None) -> tuple | None:
         """

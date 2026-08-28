@@ -16,6 +16,8 @@ class DiscoveryMessage:
     kind : Optional[AgentKind] = None
     kinematics: Optional[str] = None
     shape: Optional[str] = None
+    radius : Optional[float] = None # estimated robot radius for aggregate
+
 
     mass : Optional[float] = None       #kg
     friction : Optional[float] = None

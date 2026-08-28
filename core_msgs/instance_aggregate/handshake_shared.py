@@ -8,4 +8,5 @@ class HandshakeStatus(str, Enum):
     NACK = "nack"
     CANCEL = "cancel"
     CANCEL_ACK = "cancel_ack"
+    BID = "bid"
 
