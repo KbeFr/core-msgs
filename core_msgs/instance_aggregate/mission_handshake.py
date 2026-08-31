@@ -27,7 +27,7 @@ class MissionBidding:
     """Bid returned from the instance twin. Lower is better on both axes."""
     time_bidding: float | None = None      # [s] estimated time to finish
     battery_bidding: float | None = None   # [%] estimated battery spend
-    battery_margin: float | None = None    # [%] SoC left afterwards
+    battery_margin: float | None = None    # [%] SoC left afterward
 
 
 
@@ -36,7 +36,7 @@ class MissionPlanHint:
     """What the aggregate planned for this specific agent."""
     distance: float | None = None    # [m] path length
     plan_cost: float | None = None   # A* cost (posture-weighted)
-    path: Any | None = None          # (2, N) ndarray, optional
+    path: list | None = None          # list [(x,y),(x,y)] with path, no numpy cause of jsonpickle
 
 
 
@@ -91,8 +91,13 @@ class MissionResponder:
         self.reserved: dict[str, MissionBidding] = {}
         self.reserved_payload: dict[str, Mission] = {}
 
+        logger.debug("MissionResponder created for agent : %s and  instance : %s" ,agent_name, instance_name)
+
+
     def handle(self, env: MissionEnvelope, active_id: str | None) -> ResponderResult:
         status = env.handshake_status
+
+        logger.debug("Handle called, mission_id: %s , status : %s ", active_id , status.value)
 
         # request -> get bidding and send it back
         if status == HandshakeStatus.REQUEST:
@@ -113,7 +118,6 @@ class MissionResponder:
 
         bid = self.get_bidding_fn(env.hint)
 
-
         if bid is None or bid.time_bidding is None:
             return ResponderResult(reply=self.get_nack(env.mission_id, self.agent_name))
 
@@ -122,13 +126,18 @@ class MissionResponder:
         if env.payload is not None:
             self.reserved_payload[env.mission_id] = env.payload
 
+        logger.debug("Bid calculated: duration: %d , drain: %d for mission : %s ",
+                     bid.time_bidding , bid.battery_bidding , env.mission_id )
+
         return ResponderResult(
             reply=self._env(env.mission_id, HandshakeStatus.BID, bidding=bid),
             action=MissionAction.BIDDING,
         )
 
     def _on_award(self, env: MissionEnvelope, active_id: str | None) -> ResponderResult:
-        if active_id is not None and active_id != env.mission_id:
+        if active_id == env.mission_id:
+            return ResponderResult(reply=None)      # already ours ignore duplicates
+        if active_id is not None:
             return ResponderResult(reply=self.get_nack(env.mission_id, self.agent_name))
 
         # Get missions
@@ -142,6 +151,8 @@ class MissionResponder:
         self.reserved.clear()
         self.reserved_payload.clear()
 
+        logger.debug("Got awarded the mission %s", env.mission_id)
+
         return ResponderResult(
             reply=self._env(env.mission_id, HandshakeStatus.ACK),
             action=MissionAction.START_MISSION,
@@ -150,6 +161,9 @@ class MissionResponder:
 
     def _on_cancel(self, env: MissionEnvelope, active_id: str | None) -> ResponderResult:
         mission_id = env.mission_id
+
+        logger.debug("Cancel called for mission %s", mission_id)
+
         if mission_id == active_id:
             self.reserved.pop(mission_id, None)
             return ResponderResult(
@@ -219,6 +233,9 @@ class MissionInitiator:
 
         self._clock = time.time
 
+        logger.debug("Initiator created for mission: %s , agent: %s , aggregate: %s",
+                     mission_id, agent_name, aggregate_name)
+
 
 
     @property
@@ -236,6 +253,10 @@ class MissionInitiator:
     ) -> MissionEnvelope:
         self.state = InitiatorState.REQUESTED
         self.sent_at = self._clock()
+
+        logger.debug("request called for mission %s", self.mission_id)
+
+
         return MissionEnvelope(
             sender=self.aggregate_name,
             mission_id=self.mission_id,
@@ -270,8 +291,10 @@ class MissionInitiator:
         if env.sender != self.agent_name:
             return None  # a losing bidder's CANCEL_ACK (auction state not kept)
 
-
         s = env.handshake_status
+
+        logger.debug("handle called for mission %s, status : %s", self.mission_id, s.value)
+
 
         if s == HandshakeStatus.BID:
             self.bid = env.bidding
@@ -325,9 +348,16 @@ class MissionAuction:
         self.closed = False
         self.opened_at: float | None = None
 
+        logger.debug("Auction created for mission: %s , aggregate: %s, agents: %d ",
+                     mission.mission_id , aggregate_name , len(hints.keys()))
+
+
     def open(self) -> dict[str, MissionEnvelope]:
         """{agent_name: envelope} for the twin to send."""
         self.opened_at = time.time()
+
+        logger.debug("Auction opened")
+
         return {
             name: MissionEnvelope(
                 mission_id=self.mission.mission_id,
@@ -340,6 +370,9 @@ class MissionAuction:
         }
 
     def handle(self, env: MissionEnvelope, agent_name: str) -> None:
+
+        logger.debug("handle called, mission : %s , agent: %s", self.mission.mission_id, agent_name)
+
         if self.closed or agent_name not in self.hints:
             return
         if env.mission_id != self.mission.mission_id:
