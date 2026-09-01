@@ -111,6 +111,7 @@ class InstantiateInitiator:
 
     def cancel(self) -> InstantiateEnvelope:
         return InstantiateEnvelope(
+            aggregate_name=self.aggregate_name,
             agent_name=self.agent_name,
             handshake_status=HandshakeStatus.CANCEL
         )

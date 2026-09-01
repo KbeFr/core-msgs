@@ -10,8 +10,8 @@ class DiscoveryMessage:
 
     namespace: Optional[str] = None
 
-    robot_id: Optional[int] = None
-    robot_name: Optional[str] = None
+    agent_id: Optional[int] = None
+    agent_name: Optional[str] = None
 
     kind : Optional[AgentKind] = None
     kinematics: Optional[str] = None
