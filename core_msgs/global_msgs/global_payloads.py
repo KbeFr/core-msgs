@@ -7,6 +7,26 @@ from core_msgs.agents_contract import AgentKind
 
 @dataclass
 class DiscoveryMessage:
+    """
+    DiscoveryMessage send from agent to aggregate twin in system
+
+    args:
+        :param shape: dict with shape of agent : (only name is required, the rest will be defaulted if none given)
+
+        - {'name' : 'circle', 'radius': 0.2, 'center': None, 'random_shape': False, 'radius_range': None, 'wheelbase': None}
+	    - {'name' : 'polygon', 'vertices': None, 'random_shape': False, 'is_convex': False}
+		- {'name' : 'rectangle', 'length': 1.0, 'width': 1.0, 'wheelbase': None}
+		- {'name' : 'linestring', 'vertices': None, 'random_shape': False, 'is_convex': True}
+
+        :param radius: minimum_bounding_radius of the shape given, required for aggregate's estimation of shape
+
+        :param kinematics: dict with kinematics of agent : (only name required)
+
+        - {'name' : 'omni' , 'noise': False, 'alpha': None}
+		- {'name' : 'diff' , 'noise': False, 'alpha': None}
+		- {'name' : 'acker', 'noise': False, 'alpha': None}
+
+    """
 
     namespace: Optional[str] = None
 
@@ -14,8 +34,8 @@ class DiscoveryMessage:
     agent_name: Optional[str] = None
 
     kind : Optional[AgentKind] = None
-    kinematics: Optional[str] = None
-    shape: Optional[str] = None
+    kinematics: Optional[dict] = None
+    shape: Optional[dict] = None
     radius : Optional[float] = None # estimated robot radius for aggregate
 
 
