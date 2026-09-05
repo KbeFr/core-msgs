@@ -7,7 +7,7 @@ import yaml
 
 from core_msgs.global_msgs.global_payloads import DiscoveryMessage
 from core_msgs.instance_agent.controll_payloads import VelocityCommandMessage
-from core_msgs.instance_agent.sensor_payloads import ImuMessage, WheelSpeedMessage, PoseMessage
+from core_msgs.instance_agent.sensor_payloads import ImuMessage, WheelSpeedMessage, PoseMessage, DetectionMessage
 from core_msgs.instance_aggregate.mission_handshake import MissionEnvelope
 from core_msgs.instance_aggregate.instantiate_handshake import InstantiateEnvelope
 from core_msgs.instance_aggregate.payloads import ObstacleObservation, TwinStatePayload
@@ -39,6 +39,7 @@ class MessageType(str, Enum):
 
     # (instance <-> agent)
     ACTION = "action"
+    DETECTIONS = "detections"
     IMU = "imu"
     WHEEL_ODOM = "wheel_odom"
     POSE = "pose"
@@ -62,6 +63,9 @@ class MessageType(str, Enum):
 
 # Pure data definitions so core_msgs doesn't depend on flexNode
 TOPIC_SPECS = {
+
+    # --- instance <-> aggregate
+
     MessageType.MISSION: {
         "name": "{agent_id}_{message_type}",
         "description": "Channel for {message_type} communication",
@@ -86,11 +90,22 @@ TOPIC_SPECS = {
         "protocol": "mqtt",
         "mqtt": {"topic": "{namespace}/{agent_id}/{message_type}", "QoS": 1},
     },
+
+    # --- agent <-> instance ----
+
     MessageType.ACTION: {
         "name": "{agent_id}_{message_type}",
         "description": "Channel for {message_type} communication",
         "type": "message",
         "class": VelocityCommandMessage.__name__,
+        "protocol": "mqtt",
+        "mqtt": {"topic": "{namespace}/{agent_id}/{message_type}", "QoS": 1},
+    },
+    MessageType.DETECTIONS: {
+        "name": "{agent_id}_{message_type}",
+        "description": "Channel for {message_type} communication",
+        "type": "message",
+        "class": DetectionMessage.__name__,
         "protocol": "mqtt",
         "mqtt": {"topic": "{namespace}/{agent_id}/{message_type}", "QoS": 1},
     },
@@ -118,6 +133,9 @@ TOPIC_SPECS = {
         "protocol": "mqtt",
         "mqtt": {"topic": "{namespace}/{agent_id}/{message_type}", "QoS": 1},
     },
+
+    # --- sim (not used) ----
+
     MessageType.SPAWN: {
         "name": "{agent_id}_{message_type}",
         "description": "Channel for {message_type} communication",
@@ -134,6 +152,8 @@ TOPIC_SPECS = {
         "protocol": "mqtt",
         "mqtt": {"topic": "{namespace}/{agent_id}/{message_type}", "QoS": 1},
     },
+
+    # --- global messages ----
     MessageType.DISCOVERY: {
         "name": "{message_type}",
         "description": "Channel for {message_type} communication",
@@ -216,16 +236,6 @@ def scoped_topic(namespace: str, scope: str, msg_type: MessageType) -> str:
     """A fixed, non-agent channel owned by one named node, e.g.
     scoped_topic(ns, 'AggregateDTTwin', MessageType.GUI_COMMAND)."""
     return f"{namespace}/{scope}/{msg_type.value}"
-
-
-def agent_topic(namespace: str, agent_id: str, msg_type: MessageType) -> str:
-    """A per-agent channel, registered dynamically as agents are discovered."""
-    return f"{namespace}/{agent_id}/{msg_type.value}"
-
-
-def discovery_topic(namespace: str) -> str:
-    return scoped_topic(namespace, GLOBAL_SCOPE, MessageType.DISCOVERY)
-
 
 
 def load_topic_config(path: str) -> dict:

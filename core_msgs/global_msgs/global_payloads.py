@@ -26,6 +26,17 @@ class DiscoveryMessage:
 		- {'name' : 'diff' , 'noise': False, 'alpha': None}
 		- {'name' : 'acker', 'noise': False, 'alpha': None}
 
+        :param perception_sensors: !list! with dicts of perception sensors of agent :
+        - {'name' : 'aruco', 'offset' : {'position' : {'x' : '' , 'y' : '' , 'z' : '' },
+                                         'orientation': {'x' : '' , 'y' : '' , 'z' : '' , 'w' : ''}    }}
+
+        - {'name' : 'sim2d_object' , 'offset' : {'position' : {'x' : '' , 'y' : '' } }
+
+
+
+
+
+
     """
 
     namespace: Optional[str] = None
@@ -37,6 +48,9 @@ class DiscoveryMessage:
     kinematics: Optional[dict] = None
     shape: Optional[dict] = None
     radius : Optional[float] = None # estimated robot radius for aggregate
+
+    perception_sensors : Optional[list] = None
+    state_sensors : Optional[dict] = None
 
 
     mass : Optional[float] = None       #kg
