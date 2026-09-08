@@ -28,13 +28,10 @@ class DiscoveryMessage:
 
         :param perception_sensors: !list! with dicts of perception sensors of agent :
         - {'name' : 'aruco', 'offset' : {'position' : {'x' : '' , 'y' : '' , 'z' : '' },
-                                         'orientation': {'x' : '' , 'y' : '' , 'z' : '' , 'w' : ''}    }}
+                                         'orientation': {'x' : '' , 'y' : '' , 'z' : '' , 'w' : ''}}}
 
-        - {'name' : 'sim2d_object' , 'offset' : {'position' : {'x' : '' , 'y' : '' } }
-
-
-
-
+        - {'name' : 'sim2d_object' , 'offset' : {'position' : {'x' : '' , 'y' : '' , 'z' : '' },
+                                         'orientation': {'x' : '' , 'y' : '' , 'z' : '' , 'w' : ''}}}
 
 
     """
@@ -51,7 +48,6 @@ class DiscoveryMessage:
 
     perception_sensors : Optional[list] = None
     state_sensors : Optional[dict] = None
-
 
     mass : Optional[float] = None       #kg
     friction : Optional[float] = None

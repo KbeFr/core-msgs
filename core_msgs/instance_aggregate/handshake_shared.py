@@ -18,7 +18,7 @@ class HandshakeStatus(str, Enum):
 
 
 class EpochGuard:
-    """Mixin for initiators. The initiator owns the counter; responders only echo."""
+    """Mixin for initiators. The initiator owns the counter, responders only echo."""
 
     def _new_epoch(self) -> int:
         self.epoch = getattr(self, "epoch", 0) + 1

@@ -1,12 +1,10 @@
 """
 dispatch.py
 
-For topic callback register is both aggregate and instance
+For topic callback register in both aggregate and instance
 
 """
 from __future__ import annotations
-
-
 
 def handles(topic):
     """Tag a method as the handler for a MessageType."""
@@ -16,7 +14,6 @@ def handles(topic):
         fn._topic = topic
         return fn
     return deco
-
 
 class MessageDispatcher:
     """Base class that automatically compiles the dispatch table for any subclass."""

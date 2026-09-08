@@ -2,7 +2,6 @@
 import logging
 
 from enum import Enum
-from typing import Any
 import yaml
 
 from core_msgs.global_msgs.global_payloads import DiscoveryMessage
@@ -16,10 +15,12 @@ from core_msgs.simulation_aggregate.payloads import (
     RobotSpawnMessage,
     SimStartupMessage,
 )
+from core_msgs.utils.utils import format_nested_strings
 
 logger = logging.getLogger(__name__)
 
 GLOBAL_SCOPE = "global"
+
 
 # Cloned from flexComm PropertyBinding
 class Direction(str, Enum):
@@ -49,16 +50,15 @@ class MessageType(str, Enum):
     STARTUP = "startup"
 
     # global channel (GLOBAL_SCOPE)
-    DISCOVERY = "discovery"                 # (agent -> system/aggregate)
-    INSTANTIATE = "instantiate"             # (aggregate -> instance)
-
+    DISCOVERY = "discovery"  # (agent -> system/aggregate)
+    INSTANTIATE = "instantiate"  # (aggregate -> instance)
 
     # GUI <-> aggregate (the fleet/mission-level GUI one layer up - NOT
     # this sim node's own local control GUI, see simulation_gui.py)
-    GUI_COMMAND = "gui_command"             # (GUI -> AggregateDTTwin)
-    SIM_CONTROL = "sim_control"             # (GUI -> AggregateSimTwin)
-    SIM_STATUS = "sim_status"               # (AggregateSimTwin -> GUI)
-    FLEET_SNAPSHOT = "fleet_snapshot"       # (AggregateDTTwin -> GUI)
+    GUI_COMMAND = "gui_command"  # (GUI -> AggregateDTTwin)
+    SIM_CONTROL = "sim_control"  # (GUI -> AggregateSimTwin)
+    SIM_STATUS = "sim_status"  # (AggregateSimTwin -> GUI)
+    FLEET_SNAPSHOT = "fleet_snapshot"  # (AggregateDTTwin -> GUI)
 
 
 # Pure data definitions so core_msgs doesn't depend on flexNode
@@ -172,19 +172,13 @@ TOPIC_SPECS = {
     },
 }
 
+
 def get_data_name(agent_id: str, msg_type: MessageType):
-    spec = TOPIC_SPECS.get(msg_type)
-    if not spec:
-        raise ValueError(f"No topic spec defined for {msg_type}")
+    """ Get data name from ´´agent_id´´ and ´´msg_type´´. wrapper of ´´get_comm_matrix_property´´ """
 
-    rendered_spec = format_nested_strings(
-        spec,
-        message_type=msg_type.value,
-        agent_id=agent_id
-    )
+    rendered_spec = get_comm_matrix_property(msg_type=msg_type, agent_id=agent_id, namespace="")
 
-    return  rendered_spec.get("name")
-
+    return rendered_spec.get("name")
 
 
 def get_comm_matrix_property(msg_type: MessageType, namespace: str, agent_id: str) -> dict:
@@ -203,65 +197,19 @@ def get_comm_matrix_property(msg_type: MessageType, namespace: str, agent_id: st
     return rendered_spec
 
 
-def format_nested_strings(data, **kwargs):
-    """
-    Recursively searches a dictionary or list and formats any strings
-    found using the provided keyword arguments.
-
-    """
-    if isinstance(data, dict):
-        return {key: format_nested_strings(value, **kwargs) for key, value in data.items()}
-
-    elif isinstance(data, list):
-        return [format_nested_strings(item, **kwargs) for item in data]
-
-    elif isinstance(data, str):
-        return data.format_map(_LeaveUnmatched(kwargs))
-
-    else:
-        return data
-
-
-class _LeaveUnmatched(dict):
-    """dict subclass for str.format_map() that leaves an unknown
-    placeholder as literal text (``{whatever}``) instead of raising
-    KeyError, so format_nested_strings can be called more than once
-    with different kwargs each time."""
-
-    def __missing__(self, key):
-        return "{" + key + "}"
-
-
-def scoped_topic(namespace: str, scope: str, msg_type: MessageType) -> str:
-    """A fixed, non-agent channel owned by one named node, e.g.
-    scoped_topic(ns, 'AggregateDTTwin', MessageType.GUI_COMMAND)."""
-    return f"{namespace}/{scope}/{msg_type.value}"
-
-
 def load_topic_config(path: str) -> dict:
-    """Load a topic_config.yaml (a list of ``{name, dir}`` entries) into
-    the ``{name: dir}`` dict node constructors expect
-    """
+    """Load a topic_config.yaml (list of ``{name, dir}`` entries) to a ``{name: dir}`` dict"""
 
     with open(path, "r") as f:
         entries = yaml.safe_load(f) or []
 
     return {entry["name"]: entry["dir"] for entry in entries}
 
-def load_config(path: str ) -> Any:
-    """Load and parse a YAML configuration file."""
-    try:
-        with open(path, 'r') as file:
-            return  yaml.safe_load(file)
-    except:
-        raise Exception("Config file not found")
-
 
 def register_node_topics(node, topic_dict: dict, namespace: str, agent_id: str,
                          in_callbacks: dict | None = None) -> dict:
     """
-    Register every topic in ``topic_dict`` against ``node.property_registry``.
-
+    Register every topic in ´´topic_dict´´ against ``node.property_registry``.
     """
     in_callbacks = in_callbacks or {}
     published: dict = {}
@@ -284,7 +232,7 @@ def register_node_topics(node, topic_dict: dict, namespace: str, agent_id: str,
         rendered = get_comm_matrix_property(msg_type=msg_type, namespace=namespace, agent_id=agent_id)
         node.property_registry.add_property(**rendered)
         logger.debug("[register_node_topics] registered %s dir=%s topic_name=%s",
-                     msg_type.value, dir_.value, rendered.get("name"),)
+                     msg_type.value, dir_.value, rendered.get("name"))
 
         if dir_ in (Direction.OUT, Direction.INOUT):
             published[msg_type] = rendered["class"]

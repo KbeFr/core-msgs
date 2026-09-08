@@ -2,6 +2,9 @@ from dataclasses import dataclass, field
 from typing import Optional
 import time
 
+from core_msgs.utils.math import Vector3, Quaternion
+
+
 @dataclass
 class PoseMessage:
     name: str = "Pose"
@@ -46,19 +49,6 @@ class DetectedObjectSim2D:
 
 # --- ArUco-shaped marker detections -----------------------------------
 # Mirrors the real geometry_msgs/Point, geometry_msgs/Quaternion
-
-@dataclass
-class Vector3:
-    x: float = 0.0
-    y: float = 0.0
-    z: float = 0.0
-
-@dataclass
-class Quaternion:
-    x: float = 0.0
-    y: float = 0.0
-    z: float = 0.0
-    w: float = 1.0
 
 @dataclass
 class Pose:
