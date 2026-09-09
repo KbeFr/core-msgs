@@ -4,22 +4,22 @@ from enum import Enum
 
 # Centralized types, can be used to tie functionality to them?
 class AgentKind(str, Enum):
-    UGV = "UGV"
-    UAV = "UAV"
+    UGV = "ugv"
+    UAV = "uav"
 
 # Default comes from config prob, so str
 def parse_agent_kind(val: AgentKind | str | None, default: str = "ugv") -> AgentKind:
     if isinstance(val, AgentKind):
         return val
     if not val:
-        return AgentKind(str(default).upper())
+        return AgentKind(str(default).lower())
     try:
         # Tries value lookup first (e.g. "ugv" -> AgentKind.UGV)
-        return AgentKind(str(val).upper())
+        return AgentKind(str(val).lower())
     except (ValueError, KeyError):
         try:
             # Fallback to name lookup (e.g. "UGV" -> AgentKind['UGV'])
-            return AgentKind(str(val).upper())
+            return AgentKind(str(val).lower())
         except KeyError:
             return default
 

@@ -38,15 +38,16 @@ class DiscoveryMessage:
     agent_name: str  # more seen as agent_id (needs to be unique)
     kind : AgentKind # UAV-UGV
 
-    namespace: Optional[str] = None
-
     agent_id: Optional[int] = None
+    agent_type: Optional[str] = "" # for config reasons (for example turtlebot3 -> specs)
 
-    agent_type: Optional[str] = None # for config reasons (for example turtlebot3 -> specs)
+    namespace: Optional[str] = None
 
     kinematics: Optional[dict] = None
     shape: Optional[dict] = None
     radius : Optional[float] = None # estimated robot radius for aggregate
+    controller : Optional[dict] = None
+    battery : Optional[dict] = None
 
     perception_sensors : Optional[list] = None
     state_sensors : Optional[dict] = None
