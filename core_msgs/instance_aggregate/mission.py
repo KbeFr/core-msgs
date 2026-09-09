@@ -111,6 +111,7 @@ class Mission:
 
     distance : float | None = None
 
+    path : list | None = None
 
     # Runtime state
     assigned_ugv: str | None = None

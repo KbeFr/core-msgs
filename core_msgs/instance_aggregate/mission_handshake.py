@@ -17,7 +17,7 @@ from enum import Enum
 from typing import Callable
 
 from core_msgs.instance_aggregate.handshake_shared import HandshakeStatus
-from core_msgs.instance_aggregate.mission import Mission
+from core_msgs.instance_aggregate.mission import Mission, MissionStatus
 
 logger = logging.getLogger(__name__)
 
@@ -256,6 +256,9 @@ class MissionInitiator:
 
         self._clock = clock
 
+        self.hint : MissionPlanHint | None = None # to store hint (full path for visualization)
+        # could be that instance sends back own path with kine, but for later
+
         logger.debug("Initiator created for mission: %s , agent: %s , aggregate: %s",
                      mission_id, agent_name, aggregate_name)
 
@@ -288,6 +291,7 @@ class MissionInitiator:
         self.state = InitiatorState.REQUESTED
         self.sent_at = self._clock()
 
+        self.hint = hint # save hint
         logger.debug("request called for mission %s", self.mission_id)
 
         return MissionEnvelope(
@@ -414,7 +418,7 @@ class SessionState(str, Enum):
     ACTIVE = "active"           # winner confirmed, mission running
     DONE = "done"               # winner reported COMPLETE
     FAILED = "failed"           # no winner, or winner refused / timed out
-
+    CANCELED = "canceled"       # canceled by aggregate or instance
 
 class MissionSession:
     """
@@ -521,16 +525,19 @@ class MissionSession:
         if new_state is InitiatorState.CONFIRMED and agent_name == self.winner:
             self.state = SessionState.ACTIVE
             self.mission.assigned_ugv = agent_name
+            self.mission.mission_status = MissionStatus.ACTIVE
+            self.mission.path = initiator.hint.path if initiator.hint else None
             logger.debug("mission=%s ACTIVE on %s", self.mission.mission_id, agent_name)
             return {}
 
         if new_state is InitiatorState.REJECTED and agent_name == self.winner:
             logger.warning("winner %s refused mission=%s", agent_name, self.mission.mission_id)
-            return self._fail("winner refused")
+            return self._stop("winner refused")
 
         # --- execution ----------------------------------------------------
         if new_state is InitiatorState.DONE and agent_name == self.winner:
             self.state = SessionState.DONE
+            self.mission.mission_status = MissionStatus.COMPLETE
             logger.debug("mission=%s COMPLETE on %s", self.mission.mission_id, agent_name)
             return {agent_name: initiator.complete_ack()}   # idempotent, re-ACKs retransmits
 
@@ -557,7 +564,7 @@ class MissionSession:
             if prev is InitiatorState.REQUESTED and not self.closed:
                 self.bid_replies.setdefault(name, None)
             elif prev is InitiatorState.AWARDED and name == self.winner:
-                return self._fail("winner never confirmed")
+                return self._stop("winner never confirmed")
 
         if not self.closed:
             out.update(self._maybe_close())
@@ -574,7 +581,7 @@ class MissionSession:
         """All bids in: pick a winner, award it, cancel the rest."""
         winner = self.get_winner_fn(self.mission, self.bid_replies, self.hints)
         if winner is None or winner not in self.initiators:
-            return self._fail("no winner")
+            return self._stop("no winner")
 
         self.winner = winner
         self.state = SessionState.AWARDING
@@ -590,14 +597,19 @@ class MissionSession:
         return out
 
 
-    def _fail(self, reason: str) -> dict[str, MissionEnvelope]:
+    def _stop(self, reason: str, state: SessionState ) -> dict[str, MissionEnvelope]:
         """Release everyone still holding a reservation and mark the session
         failed. The twin decides whether to re-open."""
         logger.info("mission=%s session failed: %s (attempt %d)",
                     self.mission.mission_id, reason, self.attempt)
-        self.state = SessionState.FAILED
+        self.state = state
         self.winner = None
-        self.mission.assigned_ugv = None
+
+        if state == SessionState.FAILED:
+            self.mission.assigned_ugv = None
+            self.mission.mission_status = MissionStatus.PENDING # Can retry maybe wait but yea
+        elif state == SessionState.CANCELED:
+            self.mission.mission_status = MissionStatus.CANCELLED # stop retry
 
         out = {}
         for name, ini in self.initiators.items():
@@ -610,7 +622,8 @@ class MissionSession:
         """Abort at any point in the lifecycle. use private _fail."""
         if self.state in (SessionState.DONE, SessionState.FAILED):
             return {}
-        return self._fail(reason)
+
+        return self._stop(reason, SessionState.CANCELED)
 
     # -- views ------------------------------------------------------------
 
@@ -627,7 +640,7 @@ class MissionSession:
     @property
     def retirable(self) -> bool:
         """Safe for the twin to drop this session."""
-        return (self.state in (SessionState.DONE, SessionState.FAILED)
+        return (self.state in (SessionState.DONE, SessionState.FAILED , SessionState.CANCELED)
                 and not self.outstanding)
 
     @property
