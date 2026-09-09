@@ -1,9 +1,10 @@
+from pathlib import Path
 from typing import Any
 
 import yaml
 
 
-def load_config(path: str ) -> Any:
+def load_config(path: str | Path) -> Any:
     """Load and parse a YAML configuration file."""
     try:
         with open(path, 'r') as file:
