@@ -87,6 +87,7 @@ class MissionResponder:
         self.get_bidding_fn = get_bidding_fn
         self.reserved: dict[str, MissionBidding] = {}
         self.reserved_payload: dict[str, Mission] = {}
+        self.reserved_hints: dict[str, MissionPlanHint] = {}
         self.active_epoch: int = 0
 
         logger.debug("MissionResponder created for agent : %s and  instance : %s" ,agent_name, instance_name)
@@ -128,6 +129,10 @@ class MissionResponder:
         self.active_epoch = env.epoch
         if env.payload is not None:
             self.reserved_payload[env.mission_id] = env.payload
+        if env.hint is not None:
+            # The award (ACK) doesn't necessarily repeat this, so it has to
+            # survive here or the winning path never reaches the agent.
+            self.reserved_hints[env.mission_id] = env.hint
 
         logger.debug("Bid calculated: duration: %s , drain: %s for mission : %s ",
                      bid.time_bidding , bid.battery_bidding , env.mission_id )
@@ -150,9 +155,17 @@ class MissionResponder:
             # Award for something we never bid on.
             return ResponderResult(reply=self.get_nack(env.mission_id, env.epoch))
 
+        # The path is what makes this a route instead of a straight line to
+        # the goal -- prefer whatever the award itself carries, but fall back
+        # to what we saved at request time since award() doesn't repeat it.
+        hint = env.hint or self.reserved_hints.get(env.mission_id)
+        if payload is not None and hint is not None:
+            payload.set_path(hint.path)
+
         # Winning one mission drops every other outstanding reservation.
         self.reserved.clear()
         self.reserved_payload.clear()
+        self.reserved_hints.clear()
         self.active_epoch = env.epoch
 
         logger.debug("Got awarded the mission %s", env.mission_id)
@@ -177,6 +190,7 @@ class MissionResponder:
         if mission_id in self.reserved:
             self.reserved.pop(mission_id, None)
             self.reserved_payload.pop(mission_id, None)
+            self.reserved_hints.pop(mission_id, None)
             return ResponderResult(
                 reply=self._env(mission_id, HandshakeStatus.CANCEL_ACK, env.epoch),
                 action=MissionAction.DROP_BID,
@@ -311,6 +325,7 @@ class MissionInitiator:
             mission_id=self.mission_id,
             handshake_status=HandshakeStatus.ACK,
             epoch=self.epoch,
+            hint=self.hint,  # the winner's own path, not just distance/cost
         )
 
     def cancel(self) -> MissionEnvelope:
@@ -526,7 +541,7 @@ class MissionSession:
             self.state = SessionState.ACTIVE
             self.mission.assigned_ugv = agent_name
             self.mission.mission_status = MissionStatus.ACTIVE
-            self.mission.path = initiator.hint.path if initiator.hint else None
+            self.mission.set_path(initiator.hint.path if initiator.hint else None)
             logger.debug("mission=%s ACTIVE on %s", self.mission.mission_id, agent_name)
             return {}
 
