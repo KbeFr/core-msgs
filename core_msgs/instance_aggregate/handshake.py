@@ -20,25 +20,30 @@ Three flows. A hint in the REQUEST is what asks for a bid, nothing else changes.
       REQUEST (target=instance)     -->  <-- ACK
       ACK                           -->               link
 
-  AUCTION - hint per instance, a HandshakeAuction fans out one initiator each.
+  ELECTION - hint per instance, a HandshakeElection fans out one initiator each.
       REQUEST (target, hint)        -->  <-- BID
       ACK    (to the winner)        -->  <-- ACK      link
       CANCEL (to the losers)        -->  <-- CANCEL_ACK
 
-  After linking all three are identical:
+  After the award all three are identical, and all three are ONE initiator:
       CANCEL   -->  <-- CANCEL_ACK          release
-               <--  COMPLETE  -->  COMPLETE_ACK       mission finished
 
-Aggregate side there is ONE object per subject, and HandshakeInitiator and
-HandshakeAuction expose the same four things, so they live in the same dict and
-the aggregate never asks which kind it is:
+HandshakeInitiator is the whole aggregate side of one subject. Pooled and directed
+use it on its own. An election is a bidding round in front of it: it exists only to
+turn several candidates into one winner, hands that winner's initiator back, and is
+dropped. Nothing after the award is implemented twice.
 
     subject             what is being assigned
     handle(env)         -> HandshakeResult
     tick()              -> HandshakeResult
     cancel(reason)      -> HandshakeResult
-    done                safe to drop from the dict
+    done                safe to drop            (election: `resolved`)
     receiver            the instance holding it, or None
+    engaged             instances that may still hold something for us
+
+Statuses beyond this file (COMPLETE for missions) are added by subclassing, not by
+widening the base: HandshakeResponder.expand_states and HandshakeInitiator.
+expand_states are the hooks. See mission_handshake.py.
 
 Sans-I/O: everything here RETURNS envelopes, nothing touches a transport.
 """
@@ -248,6 +253,7 @@ class HandshakeResponder:
             reply=self._env(env, HandshakeStatus.ACK),
             action=HandshakeAction.LINK_SUBJECT,
             subject=self.active,
+            payload=self.active_env.payload
         )
 
     def get_revoked(self, subject: str) -> HandshakeEnvelope | None:
@@ -294,7 +300,7 @@ class HandshakeResponder:
 @dataclass
 class HandshakeResult:
     """What the aggregate has to do about one inbound message or one tick.
-    Returned by both HandshakeInitiator and HandshakeAuction."""
+    Returned by both HandshakeInitiator and HandshakeElection."""
     out: list[HandshakeEnvelope] = field(default_factory=list)
     action: HandshakeAction = HandshakeAction.DO_NOTHING
     subject: str | None = None
@@ -325,13 +331,19 @@ def subject_required(func):
     return wrapper
 
 
-def orphan_reply(env: HandshakeEnvelope, aggregate: str) -> HandshakeEnvelope | None:
+#: What to answer an instance talking about a subject we track nothing for. A kind of
+#: subject with more statuses adds its own entries, see MISSION_ORPHAN_REPLIES.
+ORPHAN_REPLIES = {
+    HandshakeStatus.BID: HandshakeStatus.CANCEL,        # drop the reservation
+    HandshakeStatus.ACK: HandshakeStatus.CANCEL,        # let go of the subject
+}
+
+
+def orphan_reply(env: HandshakeEnvelope, aggregate: str,
+                 extra: dict | None = None) -> HandshakeEnvelope | None:
     """A message about a subject the aggregate holds nothing for. Answering anyway
     keeps an instance from sitting on something we already forgot."""
-    status = {HandshakeStatus.BID: HandshakeStatus.CANCEL,      # drop the reservation
-              HandshakeStatus.ACK: HandshakeStatus.CANCEL,      # let go of the subject
-              HandshakeStatus.COMPLETE: HandshakeStatus.COMPLETE_ACK,
-              }.get(env.handshake_status)
+    status = {**ORPHAN_REPLIES, **(extra or {})}.get(env.handshake_status)
     if status is None:
         return None
     logger.debug("orphan %s for %s from %s -> %s",
@@ -346,8 +358,8 @@ class HandshakeInitiator(EpochGuard):
     Pooled:   request()                      -> broadcast, first ACK becomes the receiver
     Directed: request(target=instance)       -> it wins automatically
     Bidding:  request(target=..., hint=...)  -> answered with a BID, award() decides.
-              Only HandshakeAuction does that; on its own an initiator has nothing
-              to compare a bid against.
+              Only HandshakeElection does that; on its own an initiator has
+              nothing to compare a bid against.
     """
 
     def __init__(self,
@@ -405,6 +417,13 @@ class HandshakeInitiator(EpochGuard):
         return self.claimed and self.state in (InitiatorState.AWARDED,
                                                InitiatorState.CONFIRMED,
                                                InitiatorState.TIMEOUT)
+
+    @property
+    def engaged(self) -> set[str]:
+        """Instances that may still be holding a reservation or the subject itself.
+        Wider than `receiver`: it stays set through CANCELLED, so the next assignment
+        to that instance cannot race the CANCEL_ACK we are still waiting for."""
+        return {self.receiver} if self.receiver and not self.done else set()
 
     @property
     def expired(self) -> bool:
@@ -494,16 +513,18 @@ class HandshakeInitiator(EpochGuard):
         self.receiver = receiver
 
     # ---- inbound ----
-
+    #TODO rewrite clearer
     def handle(self, env: HandshakeEnvelope) -> HandshakeResult:
         res = HandshakeResult(subject=self.subject, receiver=self.receiver)
 
         if env.sender == self.aggregate:                    # our own echo
             return res
+
         if env.id != self.subject:
             logger.warning("Envelope for %s received not handled by this initiator (subject %s)",
                            env.id, self.subject)
             return res
+
         if self.is_stale(env):
             logger.warning("stale epoch %s (current %s) subject=%s, instance=%s",
                            env.epoch, self.epoch, self.subject, self.receiver)
@@ -517,6 +538,7 @@ class HandshakeInitiator(EpochGuard):
             self.receiver = sender
             res.receiver = sender
             logger.debug("subject=%s adopted instance %s (first reply)", self.subject, sender)
+
         elif sender != self.receiver:
             if status in (HandshakeStatus.BID, HandshakeStatus.ACK):
                 logger.debug("subject=%s: %s answered too late, cancelling its reservation",
@@ -532,7 +554,7 @@ class HandshakeInitiator(EpochGuard):
             res.out.append(self._env(HandshakeStatus.CANCEL))
             return res
 
-        # REQUEST -> BID
+        # REQUEST -> BID # needs input from session!
         if status == HandshakeStatus.BID:
             if self.state is not InitiatorState.REQUESTED:
                 self._illegal(status)
@@ -611,23 +633,10 @@ class HandshakeInitiator(EpochGuard):
         self._illegal(HandshakeStatus.ACK)
         return res
 
-    # For mission expansion
     def expand_states(self, env: HandshakeEnvelope, res: HandshakeResult) -> HandshakeResult:
-        status = env.handshake_status
-
-        # ACTIVE -> COMPLETE -> COMPLETE_ACK
-        if status == HandshakeStatus.COMPLETE:
-            if self.state not in (InitiatorState.CONFIRMED, InitiatorState.DONE):
-                self._illegal(status)
-                return res
-            self.state = InitiatorState.DONE        # idempotent: retransmits re-ACK
-            self.sent_at = None
-            res.out.append(self._env(HandshakeStatus.COMPLETE_ACK))
-            res.state = self.state
-            res.action = HandshakeAction.COMPLETE_SUBJECT
-            return res
-
-        self._illegal(status)
+        """Hook for statuses this class does not know. Override in a subclass, see
+        MissionInitiator for the COMPLETE leg."""
+        self._illegal(env.handshake_status)
         return res
 
     # ---- tick ----
@@ -670,27 +679,27 @@ class HandshakeInitiator(EpochGuard):
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# Aggregate side, auction over several instances
+# Aggregate side, one bidding round over several instances
 # ══════════════════════════════════════════════════════════════════════════
 
-class SessionState(str, Enum):
-    SOLICITING = "soliciting"   # requests out, collecting bids
-    AWARDING = "awarding"       # winner picked, waiting for its confirm
-    ACTIVE = "active"           # winner confirmed, it holds the subject
-    DONE = "done"               # winner reported COMPLETE
-    FAILED = "failed"           # no winner, or the winner refused / timed out
-    CANCELED = "canceled"       # canceled by the aggregate
+class HandshakeElection:
+    """Picks one instance out of several, then gets out of the way.
 
+    It owns one HandshakeInitiator per candidate for the length of the bidding, and
+    that is all it owns. The moment a winner is picked, that winner's initiator is
+    the subject's conversation and this object is dropped: confirming, releasing and
+    whatever a subclass adds after the link are already the initiator's job, so
+    nothing here repeats them.
 
-class HandshakeAuction:
-    """Runs the auction for ONE subject and then stays as its owner, so the aggregate
-    keeps one object per subject from request to release.
+    Losers need no owner either. They are cancelled on the spot, and the winner's
+    initiator answers whatever still trickles in from them -- a late BID gets a
+    CANCEL because the sender is not its receiver, a CANCEL_ACK is ignored.
 
-    Only needed when there is something to rank. A pooled or directed assignment is a
-    bare HandshakeInitiator, and both answer the same four calls.
+    Generic on purpose: it ranks bids and knows nothing about what is being assigned.
 
     :param hints: {instance: hint}. The keys are who gets a request.
     :param get_winner_fn: (payload, {instance: bid|None}, {instance: hint}) -> instance
+    :param initiator_cls: the initiator this kind of subject talks through
     """
 
     def __init__(self,
@@ -702,6 +711,7 @@ class HandshakeAuction:
                  timeout: float = DEFAULT_TIMEOUT,
                  clock: Callable[[], float] = time.time,
                  epoch: int = 0,
+                 initiator_cls: type[HandshakeInitiator] = HandshakeInitiator,
                  ) -> None:
 
         self.subject = subject
@@ -713,184 +723,116 @@ class HandshakeAuction:
         self.timeout = timeout
         self.clock = clock
         self.epoch = epoch
+        self.initiator_cls = initiator_cls
 
         self.initiators: dict[str, HandshakeInitiator] = {}
         self.bid_replies: dict[str, Any] = {}       # instance -> bid, None = refused
 
-        self.state = SessionState.SOLICITING
-        self.winner: str | None = None
-        self.attempt: int = 0
-        self.opened_at: float | None = None
+        self.winner: HandshakeInitiator | None = None
+        self.failed = False
 
-        logger.debug("Auction created for subject=%s, instances=%d", subject, len(self.hints))
+        logger.debug("Election created for subject=%s, candidates=%d", subject, len(self.hints))
 
     # ---- lifecycle ----
 
-    def open(self, hints: dict[str, Any] | None = None,
-             payload: Any = None) -> HandshakeResult:
-        """Re-openable: calling it again bumps the epoch, so replies to the previous
-        attempt are dropped."""
-        if hints is not None:
-            self.hints = dict(hints)
-        if payload is not None:
-            self.payload = payload
-
+    def open(self) -> HandshakeResult:
+        """Ask every candidate. One round: if it ends without a winner the owner
+        decides whether to plan again, this object does not re-open itself."""
         self.epoch += 1
-        self.attempt += 1
-        self.state = SessionState.SOLICITING
-        self.winner = None
-        self.bid_replies = {}
-        self.initiators = {}
-        self.opened_at = self.clock()
-
         res = HandshakeResult(subject=self.subject)
         for instance, hint in self.hints.items():
-            initiator = HandshakeInitiator(self.subject, self.aggregate, receiver=instance,
+            initiator = self.initiator_cls(self.subject, self.aggregate, receiver=instance,
                                            timeout=self.timeout, clock=self.clock,
                                            epoch=self.epoch - 1)   # request() bumps it
             self.initiators[instance] = initiator
             res.out.append(initiator.request(payload=self.payload, hint=hint, target=instance))
 
-        logger.debug("Auction opened for subject=%s attempt=%d epoch=%d",
-                     self.subject, self.attempt, self.epoch)
+        logger.debug("Election opened for subject=%s epoch=%d", self.subject, self.epoch)
         return res
 
     def handle(self, env: HandshakeEnvelope) -> HandshakeResult:
-        res = HandshakeResult(subject=self.subject, receiver=self.winner)
+        """Only the bidding leg lands here. Anything later reaches the winner."""
         if env.id != self.subject or env.sender == self.aggregate:
-            return res
+            return HandshakeResult(subject=self.subject)
 
         initiator = self.initiators.get(env.sender)
         if initiator is None:
-            logger.warning("No initiator for instance %s in auction %s", env.sender, self.subject)
-            reply = orphan_reply(env, self.aggregate)       # release whatever it holds
+            res = HandshakeResult(subject=self.subject)
+            reply = orphan_reply(env, self.aggregate)   # not a candidate, let it go
             if reply is not None:
                 res.out.append(reply)
             return res
 
-        return res.merge(self._advance(env.sender, initiator, initiator.handle(env)))
+        res = initiator.handle(env)
+        if self.resolved:                       # a reply that raced the award
+            return res
+
+        if initiator.state is InitiatorState.BID:
+            self.bid_replies[env.sender] = initiator.bid
+        elif initiator.state is InitiatorState.REJECTED:
+            self.bid_replies[env.sender] = None     # a refusal is still a reply
+        else:
+            return res
+
+        return res.merge(self._close_if_complete())
 
     def tick(self) -> HandshakeResult:
-        """A silent instance counts as a refusal, a winner that never confirms fails
-        the auction."""
-        res = HandshakeResult(subject=self.subject, receiver=self.winner)
+        """A silent candidate counts as a refusal."""
+        res = HandshakeResult(subject=self.subject)
+        if self.resolved:
+            return res
 
-        for instance, initiator in list(self.initiators.items()):
+        for instance, initiator in self.initiators.items():
             if not initiator.expired:
                 continue
-            previous = initiator.state
-            inner = initiator.tick()
-            res.out.extend(inner.out)
+            res.out.extend(initiator.tick().out)
+            self.bid_replies.setdefault(instance, None)
 
-            if previous is InitiatorState.REQUESTED and not self.closed:
-                self.bid_replies.setdefault(instance, None)
-            elif previous is InitiatorState.AWARDED and instance == self.winner:
-                # It may be holding the subject with only its confirm lost, so _stop
-                # cancels it instead of walking away.
-                return res.merge(self._stop(SessionState.FAILED, "winner never confirmed"))
-            elif inner.action is not HandshakeAction.DO_NOTHING and instance == self.winner:
-                res.merge(inner)
-
-        if not self.closed:
-            res.merge(self._maybe_close())
-        return res
+        return res.merge(self._close_if_complete())
 
     def cancel(self, reason: str = "cancelled by aggregate") -> HandshakeResult:
-        """Abort at any point in the lifecycle."""
-        if self.state in (SessionState.FAILED, SessionState.CANCELED):
+        """Abort the round. Anything already awarded is the winner's problem, not
+        ours, so there is nothing to do once we are resolved."""
+        if self.resolved:
             return HandshakeResult()
-        return self._stop(SessionState.CANCELED, reason)
+        return self._abandon(reason)
 
     # ---- internals ----
 
-    def _advance(self, instance: str, initiator: HandshakeInitiator,
-                 inner: HandshakeResult) -> HandshakeResult:
-        state = inner.state
-        is_winner = instance == self.winner
-        res = HandshakeResult(out=list(inner.out), subject=self.subject, receiver=self.winner)
-
-        # --- bidding phase ---
-        if state is InitiatorState.BID and not self.closed:
-            self.bid_replies[instance] = initiator.bid
-            return res.merge(self._maybe_close())
-
-        if state is InitiatorState.REJECTED and not self.closed:
-            self.bid_replies[instance] = None           # a refusal is still a reply
-            return res.merge(self._maybe_close())
-
-        # A bid that lands after we closed: release it, it holds a reservation.
-        if state is InitiatorState.BID and self.closed and not is_winner:
-            return res.merge(initiator.cancel("auction already closed"))
-
-        if not is_winner:
-            return res
-
-        # --- the winner ---
-        if state is InitiatorState.CONFIRMED:
-            self.state = SessionState.ACTIVE
-            logger.debug("subject=%s ACTIVE on %s", self.subject, instance)
-            res.action, res.receiver = HandshakeAction.LINK_SUBJECT, instance
-            return res
-
-        if state is InitiatorState.DONE:
-            self.state = SessionState.DONE
-            res.action, res.receiver = HandshakeAction.COMPLETE_SUBJECT, instance
-            return res
-
-        if state is InitiatorState.REJECTED:
-            logger.warning("winner %s refused subject=%s", instance, self.subject)
-            was_active = self.state is SessionState.ACTIVE
-            res.merge(self._stop(SessionState.FAILED, "winner refused"))
-            if was_active:
-                res.action, res.receiver = HandshakeAction.RELEASE_SUBJECT, instance
-            return res
-
-        if state is InitiatorState.RELEASED:
-            logger.debug("winner %s released subject=%s", instance, self.subject)
-            if inner.action is HandshakeAction.RELEASE_SUBJECT:
-                res.action, res.receiver = HandshakeAction.RELEASE_SUBJECT, instance
-            return res
-
-        return res
-
-    def _maybe_close(self) -> HandshakeResult:
+    def _close_if_complete(self) -> HandshakeResult:
         if len(self.bid_replies) < len(self.hints):
             return HandshakeResult()
         return self._award()
 
     def _award(self) -> HandshakeResult:
-        """All bids in: pick a winner, award it, cancel the rest."""
+        """Every candidate answered: pick one, award it, release the rest."""
         try:
-            winner = self.get_winner_fn(self.payload, dict(self.bid_replies), dict(self.hints))
+            name = self.get_winner_fn(self.payload, dict(self.bid_replies), dict(self.hints))
         except Exception:
             logger.exception("subject=%s: get_winner_fn raised", self.subject)
-            winner = None
+            name = None
 
-        initiator = self.initiators.get(winner) if winner else None
+        initiator = self.initiators.get(name) if name else None
         if initiator is None or initiator.state is not InitiatorState.BID:
-            return self._stop(SessionState.FAILED, "no winner")
+            return self._abandon("no winner")
 
-        self.winner = winner
-        self.state = SessionState.AWARDING
-
-        res = HandshakeResult(subject=self.subject, receiver=winner)
+        self.winner = initiator
+        res = HandshakeResult(subject=self.subject, receiver=name)
         res.out.append(initiator.award())
-        for instance, other in self.initiators.items():
+        for instance, loser in self.initiators.items():
             # Only cancel instances that actually hold a reservation.
-            if instance != winner and other.state is InitiatorState.BID:
-                res.out.extend(other.cancel("lost the auction").out)
+            if instance != name and loser.state is InitiatorState.BID:
+                res.out.extend(loser.cancel("lost the election").out)
 
-        logger.debug("subject=%s awarded to %s", self.subject, winner)
+        logger.debug("subject=%s awarded to %s", self.subject, name)
         return res
 
-    def _stop(self, state: SessionState, reason: str) -> HandshakeResult:
-        """Release everyone still holding something and close the auction. The
-        aggregate decides whether to re-open."""
-        logger.info("subject=%s auction %s: %s (attempt %d)",
-                    self.subject, state.value, reason, self.attempt)
-        self.state = state
-        # self.winner is kept on purpose: its CANCEL_ACK still has to route to it.
-        # The `receiver` view already reports None once the auction is not live.
+    def _abandon(self, reason: str) -> HandshakeResult:
+        """Nobody wins. Release every candidate still holding something and let the
+        round end: the owner decides whether to plan again."""
+        logger.info("subject=%s election abandoned: %s", self.subject, reason)
+        self.failed = True
+        self.winner = None
 
         res = HandshakeResult(subject=self.subject)
         for initiator in self.initiators.values():
@@ -901,24 +843,16 @@ class HandshakeAuction:
     # ---- views ----
 
     @property
-    def closed(self) -> bool:
-        """Bidding is over."""
-        return self.state is not SessionState.SOLICITING
+    def resolved(self) -> bool:
+        """The round is over. `winner` carries the subject on from here, or nothing
+        does and the owner is free to try again."""
+        return self.winner is not None or self.failed
 
     @property
     def receiver(self) -> str | None:
-        """The instance holding the subject, or about to. Derived, not stored."""
-        if self.state in (SessionState.AWARDING, SessionState.ACTIVE):
-            return self.winner
-        return None
+        return self.winner.receiver if self.winner else None
 
     @property
-    def outstanding(self) -> list[str]:
-        """Instances whose conversation has not reached a terminal state."""
-        return [i for i, ini in self.initiators.items() if not ini.done]
-
-    @property
-    def done(self) -> bool:
-        """Safe for the aggregate to drop."""
-        return (self.state in (SessionState.DONE, SessionState.FAILED, SessionState.CANCELED)
-                and not self.outstanding)
+    def engaged(self) -> set[str]:
+        """Every candidate that may still be holding a reservation for us."""
+        return {i for i, ini in self.initiators.items() if not ini.done}

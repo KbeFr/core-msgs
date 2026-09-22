@@ -6,7 +6,7 @@ from core_msgs.agents_contract import AgentKind
 
 
 @dataclass
-class DiscoveryMessage:
+class AgentDiscoveryMessage:
     """
     DiscoveryMessage send from agent to aggregate twin in system
 
@@ -35,7 +35,7 @@ class DiscoveryMessage:
 
 
     """
-    agent_name: str  # more seen as agent_id (needs to be unique)
+    name: str  # more seen as agent_id (needs to be unique)
     kind : AgentKind # UAV-UGV
 
     agent_id: Optional[int] = None
@@ -61,4 +61,18 @@ class DiscoveryMessage:
 
     timestamp: Optional[float] = field(default_factory=time.time)
 
+@dataclass
+class InstanceDiscoveryMessage:
+    name: str
+    version : Optional[str] = None
+    timestamp: Optional[float] = field(default_factory=time.time)
 
+@dataclass
+class RegisteredMessage:
+    node_name: str
+    aggregate_name : str
+    timestamp: Optional[float] = field(default_factory=time.time)
+
+@dataclass
+class HeartBeatMessage:
+    timestamp: Optional[float] = field(default_factory=time.time)

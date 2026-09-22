@@ -4,11 +4,11 @@ import logging
 from enum import Enum
 import yaml
 
-from core_msgs.global_msgs.global_payloads import DiscoveryMessage
+from core_msgs.global_msgs.global_payloads import AgentDiscoveryMessage
 from core_msgs.instance_agent.controll_payloads import VelocityCommandMessage
 from core_msgs.instance_agent.sensor_payloads import ImuMessage, WheelSpeedMessage, PoseMessage, DetectionMessage
-from core_msgs.instance_aggregate.mission_handshake import MissionEnvelope
-from core_msgs.instance_aggregate.instantiate_handshake import InstantiateEnvelope
+from core_msgs.global_msgs.global_payloads import HeartBeatMessage, RegisteredMessage
+from core_msgs.instance_aggregate.handshake_shared import HandshakeEnvelope
 from core_msgs.instance_aggregate.payloads import ObstacleObservation, TwinStatePayload
 
 from core_msgs.simulation_aggregate.payloads import (
@@ -37,6 +37,8 @@ class MessageType(str, Enum):
     MISSION = "mission"
     OBSTACLE = "obstacle"
     TWIN_STATE = "twin_state"
+    ACTIVATE = "activate"     # instance_discovery = true
+    HEARTBEAT = "heartbeat"
 
     # (instance <-> agent)
     ACTION = "action"
@@ -51,10 +53,9 @@ class MessageType(str, Enum):
 
     # global channel (GLOBAL_SCOPE)
     DISCOVERY = "discovery"  # (agent -> system/aggregate)
-    INSTANTIATE = "instantiate"  # (aggregate -> instance)
+    INSTANTIATE = "instantiate"  # (aggregate -> instance) (instance_discovery = false)
 
-    # GUI <-> aggregate (the fleet/mission-level GUI one layer up - NOT
-    # this sim node's own local control GUI, see simulation_gui.py)
+    # GUI <-> aggregate // Not implemented (idea)
     GUI_COMMAND = "gui_command"  # (GUI -> AggregateDTTwin)
     SIM_CONTROL = "sim_control"  # (GUI -> AggregateSimTwin)
     SIM_STATUS = "sim_status"  # (AggregateSimTwin -> GUI)
@@ -67,90 +68,111 @@ TOPIC_SPECS = {
     # --- instance <-> aggregate
 
     MessageType.MISSION: {
-        "name": "{agent_id}_{message_type}",
+        "name": "{node_id}_{message_type}",
         "description": "Channel for {message_type} communication",
         "type": "message",
-        "class": MissionEnvelope.__name__,
+        "class": HandshakeEnvelope.__name__,
         "protocol": "mqtt",
-        "mqtt": {"topic": "{namespace}/{agent_id}/{message_type}", "QoS": 2},
+        "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 2},
     },
     MessageType.OBSTACLE: {
-        "name": "{agent_id}_{message_type}",
+        "name": "{node_id}_{message_type}",
         "description": "Channel for {message_type} communication",
         "type": "message",
         "class": ObstacleObservation.__name__,
         "protocol": "mqtt",
-        "mqtt": {"topic": "{namespace}/{agent_id}/{message_type}", "QoS": 2},
+        "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 2},
     },
     MessageType.TWIN_STATE: {
-        "name": "{agent_id}_{message_type}",
+        "name": "{node_id}_{message_type}",
         "description": "Channel for {message_type} communication",
         "type": "message",
         "class": TwinStatePayload.__name__,
         "protocol": "mqtt",
-        "mqtt": {"topic": "{namespace}/{agent_id}/{message_type}", "QoS": 1},
+        "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 1},
     },
-
+    # The per-instance instantiate channel. INSTANTIATE is globally scoped, so
+    # directed and auctioned assignment travel here instead. Also carries the
+    # registration ack that answers an InstanceDiscoveryMessage.
+    MessageType.ACTIVATE: {
+        "name": "{node_id}_{message_type}",
+        "description": "Channel for {message_type} communication",
+        "type": "message",
+        "class": HandshakeEnvelope.__name__,
+        "protocol": "mqtt",
+        "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 1},
+    },
     # --- agent <-> instance ----
 
     MessageType.ACTION: {
-        "name": "{agent_id}_{message_type}",
+        "name": "{node_id}_{message_type}",
         "description": "Channel for {message_type} communication",
         "type": "message",
         "class": VelocityCommandMessage.__name__,
         "protocol": "mqtt",
-        "mqtt": {"topic": "{namespace}/{agent_id}/{message_type}", "QoS": 1},
+        "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 1},
     },
     MessageType.DETECTIONS: {
-        "name": "{agent_id}_{message_type}",
+        "name": "{node_id}_{message_type}",
         "description": "Channel for {message_type} communication",
         "type": "message",
         "class": DetectionMessage.__name__,
         "protocol": "mqtt",
-        "mqtt": {"topic": "{namespace}/{agent_id}/{message_type}", "QoS": 1},
+        "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 1},
     },
     MessageType.IMU: {
-        "name": "{agent_id}_{message_type}",
+        "name": "{node_id}_{message_type}",
         "description": "Channel for {message_type} communication",
         "type": "message",
         "class": ImuMessage.__name__,
         "protocol": "mqtt",
-        "mqtt": {"topic": "{namespace}/{agent_id}/{message_type}", "QoS": 1},
+        "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 1},
     },
     MessageType.WHEEL_ODOM: {
-        "name": "{agent_id}_{message_type}",
+        "name": "{node_id}_{message_type}",
         "description": "Channel for {message_type} communication",
         "type": "message",
         "class": WheelSpeedMessage.__name__,
         "protocol": "mqtt",
-        "mqtt": {"topic": "{namespace}/{agent_id}/{message_type}", "QoS": 1},
+        "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 1},
     },
     MessageType.POSE: {
-        "name": "{agent_id}_{message_type}",
+        "name": "{node_id}_{message_type}",
         "description": "Channel for {message_type} communication",
         "type": "message",
         "class": PoseMessage.__name__,
         "protocol": "mqtt",
-        "mqtt": {"topic": "{namespace}/{agent_id}/{message_type}", "QoS": 1},
+        "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 1},
     },
 
     # --- sim (not used) ----
 
     MessageType.SPAWN: {
-        "name": "{agent_id}_{message_type}",
+        "name": "{node_id}_{message_type}",
         "description": "Channel for {message_type} communication",
         "type": "message",
         "class": RobotSpawnMessage.__name__,
         "protocol": "mqtt",
-        "mqtt": {"topic": "{namespace}/{agent_id}/{message_type}", "QoS": 1},
+        "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 1},
     },
     MessageType.STARTUP: {
-        "name": "{agent_id}_{message_type}",
+        "name": "{node_id}_{message_type}",
         "description": "Channel for {message_type} communication",
         "type": "message",
         "class": SimStartupMessage.__name__,
         "protocol": "mqtt",
-        "mqtt": {"topic": "{namespace}/{agent_id}/{message_type}", "QoS": 1},
+        "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 1},
+    },
+
+    # Used system-wide
+
+    MessageType.HEARTBEAT: {
+        "name": "{node_id}_{message_type}",
+        "description": "Channel for {message_type} communication",
+        "type": "message",
+        "class": HeartBeatMessage.__name__,
+        "protocol": "mqtt",
+        "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 1},
     },
 
     # --- global messages ----
@@ -158,7 +180,7 @@ TOPIC_SPECS = {
         "name": "{message_type}",
         "description": "Channel for {message_type} communication",
         "type": "message",
-        "class": DiscoveryMessage.__name__,
+        "class": AgentDiscoveryMessage.__name__,
         "protocol": "mqtt",
         "mqtt": {"topic": "{namespace}/{message_type}", "QoS": 1},
     },
@@ -166,22 +188,24 @@ TOPIC_SPECS = {
         "name": "{message_type}",
         "description": "Channel for {message_type} communication",
         "type": "message",
-        "class": InstantiateEnvelope.__name__,
+        "class": HandshakeEnvelope.__name__,
         "protocol": "mqtt",
         "mqtt": {"topic": "{namespace}/{message_type}", "QoS": 1},
     },
+
+
 }
 
 
-def get_data_name(agent_id: str, msg_type: MessageType):
+def get_data_name(node_id: str, msg_type: MessageType):
     """ Get data name from ´´agent_id´´ and ´´msg_type´´. wrapper of ´´get_comm_matrix_property´´ """
 
-    rendered_spec = get_comm_matrix_property(msg_type=msg_type, agent_id=agent_id, namespace="")
+    rendered_spec = get_comm_matrix_property(msg_type=msg_type, node_id=node_id, namespace="")
 
     return rendered_spec.get("name")
 
 
-def get_comm_matrix_property(msg_type: MessageType, namespace: str, agent_id: str) -> dict:
+def get_comm_matrix_property(msg_type: MessageType, namespace: str, node_id: str) -> dict:
     """Retrieves and dynamically renders a property spec for any protocol."""
 
     spec = TOPIC_SPECS.get(msg_type)
@@ -192,7 +216,7 @@ def get_comm_matrix_property(msg_type: MessageType, namespace: str, agent_id: st
         spec,
         message_type=msg_type.value,
         namespace=namespace,
-        agent_id=agent_id,
+        node_id=node_id,
     )
     return rendered_spec
 
@@ -206,7 +230,7 @@ def load_topic_config(path: str) -> dict:
     return {entry["name"]: entry["dir"] for entry in entries}
 
 
-def register_node_topics(node, topic_dict: dict, namespace: str, agent_id: str,
+def register_node_topics(node, topic_dict: dict, namespace: str, node_id: str,
                          in_callbacks: dict | None = None) -> dict:
     """
     Register every topic in ´´topic_dict´´ against ``node.property_registry``.
@@ -216,7 +240,7 @@ def register_node_topics(node, topic_dict: dict, namespace: str, agent_id: str,
 
     logger.debug(
         "[register_node_topics] node=%s namespace=%s agent_id=%s topics=%s",
-        getattr(node, "name", node), namespace, agent_id, topic_dict,
+        getattr(node, "name", node), namespace, node_id, topic_dict,
     )
 
     for msg_name, direction in topic_dict.items():
@@ -224,12 +248,12 @@ def register_node_topics(node, topic_dict: dict, namespace: str, agent_id: str,
             msg_type = MessageType(msg_name)
             dir_ = Direction(direction)
         except ValueError:
-            print(
-                "skipping unrecognized topic entry: name= %s dir= %s", msg_name, direction
+            logger.warning(
+                "skipping unrecognized topic entry: name=%s dir=%s", msg_name, direction
             )
             continue
 
-        rendered = get_comm_matrix_property(msg_type=msg_type, namespace=namespace, agent_id=agent_id)
+        rendered = get_comm_matrix_property(msg_type=msg_type, namespace=namespace, node_id=node_id)
         node.property_registry.add_property(**rendered)
         logger.debug("[register_node_topics] registered %s dir=%s topic_name=%s",
                      msg_type.value, dir_.value, rendered.get("name"))
@@ -247,5 +271,11 @@ def register_node_topics(node, topic_dict: dict, namespace: str, agent_id: str,
                 )
             elif dir_ == Direction.IN:
                 logger.warning(" %s registered inbound with no callback wired up", msg_type.value)
+            elif dir_ == Direction.INOUT:
+                # Silently having no inbound callback on an INOUT topic is how the
+                # activate channel ended up dead: the callback dict was keyed by
+                # INSTANTIATE while ACTIVATE was the topic being registered.
+                logger.warning(" %s registered INOUT with no callback wired up (keys: %s)",
+                               msg_type.value, [k.value for k in in_callbacks])
 
     return published
