@@ -6,7 +6,9 @@ import yaml
 
 from core_msgs.global_msgs.global_payloads import AgentDiscoveryMessage
 from core_msgs.instance_agent.controll_payloads import VelocityCommandMessage
-from core_msgs.instance_agent.sensor_payloads import ImuMessage, WheelSpeedMessage, PoseMessage, DetectionMessage
+from core_msgs.instance_agent.sensor_payloads import (
+    BatteryMessage, ImuMessage, WheelSpeedMessage, PoseMessage, DetectionMessage,
+)
 from core_msgs.global_msgs.global_payloads import HeartBeatMessage, RegisteredMessage
 from core_msgs.instance_aggregate.handshake_shared import HandshakeEnvelope
 from core_msgs.instance_aggregate.payloads import ObstacleObservation, TwinStatePayload
@@ -46,6 +48,7 @@ class MessageType(str, Enum):
     IMU = "imu"
     WHEEL_ODOM = "wheel_odom"
     POSE = "pose"
+    BATTERY = "battery"
 
     # simulation <-> aggregate twin
     SPAWN = "spawn"
@@ -141,6 +144,14 @@ TOPIC_SPECS = {
         "description": "Channel for {message_type} communication",
         "type": "message",
         "class": PoseMessage.__name__,
+        "protocol": "mqtt",
+        "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 1},
+    },
+    MessageType.BATTERY: {
+        "name": "{node_id}_{message_type}",
+        "description": "Channel for {message_type} communication",
+        "type": "message",
+        "class": BatteryMessage.__name__,
         "protocol": "mqtt",
         "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 1},
     },

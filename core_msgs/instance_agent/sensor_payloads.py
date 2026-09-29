@@ -33,6 +33,14 @@ class WheelSpeedMessage:
     wheel_speeds: Optional[list[float]] = None   # generic fallback, any kinematics
     timestamp: Optional[float] = field(default_factory=time.time)
 
+@dataclass
+class BatteryMessage:
+    name: str = "Battery"
+    percentage: Optional[float] = None    # 0..100
+    voltage: Optional[float] = None
+    charging: Optional[bool] = None
+    timestamp: Optional[float] = field(default_factory=time.time)
+
 
 
 ## --- Detections ---
@@ -45,6 +53,7 @@ class DetectedObjectSim2D:
     distance: Optional[float] = None         # meters, from the agent's own center
     bearing: Optional[float] = None          # radians, relative to the agent's own heading (0 = straight ahead)
     confidence: Optional[float] = 1.0        # 0..1; sensors that can't judge quality just report 1.0
+    radius: Optional[float] = None           # meters, measured extent; None -> sensor default
 
 
 # --- ArUco-shaped marker detections -----------------------------------
