@@ -7,7 +7,7 @@ import yaml
 from core_msgs.global_msgs.global_payloads import AgentDiscoveryMessage
 from core_msgs.instance_agent.controll_payloads import VelocityCommandMessage
 from core_msgs.instance_agent.sensor_payloads import (
-    BatteryMessage, ImuMessage, WheelSpeedMessage, PoseMessage, DetectionMessage,
+    BatteryMessage, ImuMessage, WheelSpeedMessage, PoseMessage, DetectionMessage, DetectedObjectSim2D, ArucoDetection,
 )
 from core_msgs.global_msgs.global_payloads import HeartBeatMessage, RegisteredMessage
 from core_msgs.instance_aggregate.handshake_shared import HandshakeEnvelope
@@ -42,13 +42,23 @@ class MessageType(str, Enum):
     ACTIVATE = "activate"     # instance_discovery = true
     HEARTBEAT = "heartbeat"
 
-    # (instance <-> agent)
+
+    POSE = "pose" #either aggregate->instance or simulated agent-> instance
+
+    # ---------- (instance <-> agent) ----------------
     ACTION = "action"
-    DETECTIONS = "detections"
+
+    # Perception sensors
+    ARUCO_DETECTIONS = "aruco_detections"
+    SIM2D_DETECTIONS = "sim2d_detections"
+    LIDAR = "lidar"
+
+    # State sensors
     IMU = "imu"
     WHEEL_ODOM = "wheel_odom"
-    POSE = "pose"
     BATTERY = "battery"
+    ODOM = "odom"             # self integrated tb4 odom
+    GPS = "gps"
 
     # simulation <-> aggregate twin
     SPAWN = "spawn"
@@ -105,24 +115,54 @@ TOPIC_SPECS = {
         "protocol": "mqtt",
         "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 1},
     },
-    # --- agent <-> instance ----
 
+    # -------------------------- agent <-> instance ---------------------------------
+
+    # Commands
     MessageType.ACTION: {
         "name": "{node_id}_{message_type}",
         "description": "Channel for {message_type} communication",
         "type": "message",
-        "class": VelocityCommandMessage.__name__,
+        "class": VelocityCommandMessage.__name__,       # internal msg_type
         "protocol": "mqtt",
         "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 1},
     },
-    MessageType.DETECTIONS: {
+
+    # Perception sensors
+
+    MessageType.ARUCO_DETECTIONS: {
         "name": "{node_id}_{message_type}",
         "description": "Channel for {message_type} communication",
         "type": "message",
-        "class": DetectionMessage.__name__,
+        "class": ArucoDetection.__name__,
         "protocol": "mqtt",
         "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 1},
     },
+
+    MessageType.SIM2D_DETECTIONS: {
+        "name": "{node_id}_{message_type}",
+        "description": "Channel for {message_type} communication",
+        "type": "message",
+        "class": DetectedObjectSim2D.__name__,
+        "protocol": "mqtt",
+        "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 1},
+    },
+
+    MessageType.LIDAR: {
+        "name": "{node_id}_{message_type}",
+        "description": "Channel for {message_type} communication",
+        "type": "message",
+        "class": DetectedObjectSim2D.__name__,
+        "protocol": "mqtt",
+        "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 1},
+    },
+
+
+
+
+    # State sensors
+
+
     MessageType.IMU: {
         "name": "{node_id}_{message_type}",
         "description": "Channel for {message_type} communication",
@@ -139,6 +179,25 @@ TOPIC_SPECS = {
         "protocol": "mqtt",
         "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 1},
     },
+
+    MessageType.ODOM: {
+        "name": "{node_id}_{message_type}",
+        "description": "Channel for {message_type} communication",
+        "type": "message",
+        "class": WheelSpeedMessage.__name__,
+        "protocol": "mqtt",
+        "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 1},
+    },
+
+    MessageType.GPS: {
+        "name": "{node_id}_{message_type}",
+        "description": "Channel for {message_type} communication",
+        "type": "message",
+        "class": WheelSpeedMessage.__name__,
+        "protocol": "mqtt",
+        "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 1},
+    },
+
     MessageType.POSE: {
         "name": "{node_id}_{message_type}",
         "description": "Channel for {message_type} communication",

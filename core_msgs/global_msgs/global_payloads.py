@@ -37,8 +37,9 @@ class AgentDiscoveryMessage:
     """
     name: str  # more seen as agent_id (needs to be unique)
     kind : AgentKind # UAV-UGV
+    agent_id: int
 
-    agent_id: Optional[int] = None
+
     agent_type: Optional[str] = "" # for config reasons (for example turtlebot3 -> specs)
 
     namespace: Optional[str] = None
