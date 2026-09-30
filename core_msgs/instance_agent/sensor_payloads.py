@@ -10,11 +10,29 @@ class PoseMessage:
     name: str = "Pose"
     x: Optional[float] = None
     y: Optional[float] = None
+    z: Optional[float] = None
     theta: Optional[float] = None
     linear_velocity: Optional[float] = None
     angular_velocity: Optional[float] = None
     frame_id: Optional[str] = None
     timestamp: Optional[float] = field(default_factory=time.time)
+
+@dataclass
+class GPSMessage:
+    name: str = "GPS"
+    x: Optional[float] = None
+    y: Optional[float] = None
+    z: Optional[float] = None
+    vx: Optional[float] = None
+    vy: Optional[float] = None
+    vz: Optional[float] = None
+    frame_id: Optional[str] = None
+    timestamp: Optional[float] = field(default_factory=time.time)
+
+
+
+
+
 
 @dataclass
 class ImuMessage:
@@ -40,7 +58,6 @@ class BatteryMessage:
     voltage: Optional[float] = None
     charging: Optional[bool] = None
     timestamp: Optional[float] = field(default_factory=time.time)
-
 
 
 ## --- Detections ---
