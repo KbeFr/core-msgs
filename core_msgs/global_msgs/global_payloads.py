@@ -51,7 +51,7 @@ class AgentDiscoveryMessage:
     battery : Optional[dict] = None
 
     perception_sensors : Optional[list] = None
-    state_sensors : Optional[dict] = None
+    state_sensors : Optional[list] = None
 
     estimator : Optional[dict] = None   # {name: ekf, ...}
     interface : Optional[dict] = None   # {name: ros , ...}
