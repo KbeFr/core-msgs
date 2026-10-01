@@ -53,6 +53,10 @@ class AgentDiscoveryMessage:
     perception_sensors : Optional[list] = None
     state_sensors : Optional[dict] = None
 
+    estimator : Optional[dict] = None   # {name: ekf, ...}
+    interface : Optional[dict] = None   # {name: ros , ...}
+
+
     mass : Optional[float] = None       #kg
     friction : Optional[float] = None
     avg_speed : Optional[float] = None  #m/s
