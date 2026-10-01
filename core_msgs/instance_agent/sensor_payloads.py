@@ -15,6 +15,8 @@ class PoseMessage:
     linear_velocity: Optional[float] = None
     angular_velocity: Optional[float] = None
     frame_id: Optional[str] = None
+    std: Optional[dict[str, float]] = None    # 1 sigma per component the sender vouches for, e.g. {"x": 0.03, "theta": 0.05}
+    observer: Optional[str] = None            # who measured it: an agent name, "irsim", ...
     timestamp: Optional[float] = field(default_factory=time.time)
 
 @dataclass

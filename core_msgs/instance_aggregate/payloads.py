@@ -34,6 +34,9 @@ class ObstacleObservation:
     vx: float = 0.0
     vy: float = 0.0
     confidence: float = 1.0            # 1.0 for ground truth (sim), <1.0 for vision fixes
+    marker_id: int | None = None       # fiducial id when the observation is a marker
+    std_xy: float | None = None        # 1 sigma position [m], from the observer's error model
+    std_theta: float | None = None     # 1 sigma heading [rad]
     timestamp: float = field(default_factory=time.time)
 
 

@@ -43,7 +43,8 @@ class MessageType(str, Enum):
     HEARTBEAT = "heartbeat"
 
 
-    POSE = "pose" #either aggregate->instance or simulated agent-> instance
+    POSE = "pose"                       # agent -> instance: the agent's own pose (e.g. sim ground truth)
+    EXTERNAL_POSE = "external_pose"     # aggregate -> instance: the agent's pose as measured by another agent
 
     # ---------- (instance <-> agent) ----------------
     ACTION = "action"
@@ -198,6 +199,14 @@ TOPIC_SPECS = {
         "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 1},
     },
 
+    MessageType.EXTERNAL_POSE: {
+        "name": "{node_id}_{message_type}",
+        "description": "Channel for {message_type} communication",
+        "type": "message",
+        "class": PoseMessage.__name__,
+        "protocol": "mqtt",
+        "mqtt": {"topic": "{namespace}/{node_id}/{message_type}", "QoS": 1},
+    },
     MessageType.POSE: {
         "name": "{node_id}_{message_type}",
         "description": "Channel for {message_type} communication",
