@@ -17,11 +17,8 @@ def parse_agent_kind(val: AgentKind | str | None, default: str = "ugv") -> Agent
         # Tries value lookup first (e.g. "ugv" -> AgentKind.UGV)
         return AgentKind(str(val).lower())
     except (ValueError, KeyError):
-        try:
-            # Fallback to name lookup (e.g. "UGV" -> AgentKind['UGV'])
-            return AgentKind(str(val).lower())
-        except KeyError:
-            return default
+        return AgentKind(str(default).lower())
+
 
 @dataclass
 class State2D:
